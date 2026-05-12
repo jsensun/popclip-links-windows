@@ -54,6 +54,25 @@ Or double-click `启动工具.bat` / 或双击 `启动工具.bat`
 
 ---
 
+## Demo / 演示
+
+| 链接识别 / Link Detection | 路径识别 / Path Detection |
+|---|---|
+| ![单个链接识别](screenshots/单个链接识别.png) | ![本地路径识别](screenshots/本地路径识别.png) |
+| 选中含 URL 的文字 → 气泡弹出 → 点击打开浏览器 | 选中本地路径 → 气泡弹出 → 点击打开资源管理器 |
+
+| 文本搜索 / Text Search | 相对路径识别 / Relative Path |
+|---|---|
+| ![文本搜索](screenshots/文本搜索.png) | ![相对路径识别](screenshots/相对路径识别.png) |
+| 选中任意文字 → 点击通过搜索引擎查找 | 选中相对路径 → 自动补全为绝对路径打开 |
+
+| 链接含符号 / URL with punctuation | |
+|---|---|
+| ![链接后面带有符号和文本](screenshots/链接后面带有符号和文本.png) | |
+| 即使链接后面有逗号、句号、括号等符号，也能准确识别 | |
+
+---
+
 ## Quick Start / 快速上手
 
 1. **Launch / 启动**
@@ -75,6 +94,8 @@ Or double-click `启动工具.bat` / 或双击 `启动工具.bat`
 ## Settings / 设置
 
 Right-click the tray icon → **Settings（软件设置...）**
+
+![设置页面](screenshots/设置页面.png)
 
 | Setting / 设置项 | English / Description | 中文说明 |
 |------------------|-----------------------|----------|
@@ -144,16 +165,8 @@ pyinstaller --onefile --noconsole --icon=popclip.ico --name PopClipLinks popclip
 ## FAQ / 常见问题
 
 **Q: The tool closes my terminal / 工具关掉了我的终端！**
-A: Fixed. The tool now uses `WM_COPY` instead of `Ctrl+C` keyboard simulation. Terminals won't receive SIGINT anymore. Also, terminals are excluded by default.
-A: 已修复。现在使用 `WM_COPY` 消息代替 `Ctrl+C` 键盘模拟，不会再发送中断信号。终端窗口默认也在排除列表中。
-
-**Q: Bubble appears far from my selection / 气泡离选中位置很远**
-A: Fixed. High-DPI scaling is properly handled now.
-A: 已修复。现在正确处理高 DPI 缩放。
-
-**Q: My keyboard doesn't have Insert key / 没有 Insert 键**
-A: Not needed anymore. The tool uses `WM_COPY` message targeting the foreground window, which works in any application.
-A: 不再需要。工具通过发送 `WM_COPY` 消息复制选中内容，兼容所有应用。
+A: Fixed. Terminals and other risky apps are excluded by process name by default (opencode.exe, conhost.exe, WindowsTerminal.exe, etc.). You can add more via Settings.
+A: 已修复。终端等危险应用默认按进程名排除（opencode.exe, conhost.exe, WindowsTerminal.exe 等），可在设置中添加更多。
 
 **Q: Antivirus flags the EXE / 杀毒软件报毒**
 A: This is a false positive common with PyInstaller-packaged apps. The source is fully open for inspection.
