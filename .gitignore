@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.spec
+dist/
+build/
+
+# Project
+*_backup*.py
+config.json
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
