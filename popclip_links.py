@@ -24,7 +24,7 @@ def log_msg(msg):
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, 
                              QHBoxLayout, QFrame, QSystemTrayIcon, QMenu, 
                              QLabel, QCheckBox, QDialog, QComboBox, QProgressBar,
-                             QListWidget, QInputDialog, QAbstractItemView)
+                              QListWidget, QInputDialog, QAbstractItemView, QFileDialog)
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QRect, QSize, QPropertyAnimation, QEasingCurve, QTimer
 from PyQt6.QtGui import QColor, QPalette, QFont, QPainter, QPainterPath, QIcon, QAction, QPen, QPixmap
 
@@ -120,10 +120,13 @@ class ConfigManager:
         "font_family": "'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif",
         "font_size": 13,
         "excluded_apps": [
-            "ConsoleWindowClass",
-            "CASCADIA_HOSTING_WINDOW_CLASS",
-            "mintty",
-            "VirtualConsoleClass",
+            "opencode.exe",
+            "wezterm-gui.exe",
+            "WindowsTerminal.exe",
+            "conhost.exe",
+            "mintty.exe",
+            "pwsh.exe",
+            "cmd.exe",
         ]
     }
     FILE_PATH = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'PopClipLinks', 'config.json')
@@ -143,6 +146,11 @@ class ConfigManager:
             try:
                 with open(self.FILE_PATH, 'r', encoding='utf-8') as f:
                     self.config.update(json.load(f))
+                excluded = self.config.get("excluded_apps", [])
+                if excluded and not any(e.lower().endswith('.exe') for e in excluded):
+                    log_msg("Config migration: old class-name exclusion list detected, reset to defaults")
+                    self.config["excluded_apps"] = self.DEFAULT_CONFIG["excluded_apps"].copy()
+                    self.save()
             except Exception as e:
                 log_msg(f"Config load error: {e}")
 
@@ -161,7 +169,7 @@ class SettingsDialog(QDialog):
 
     def init_ui(self):
         self.setWindowTitle("PopClip Links 设置")
-        self.setFixedSize(400, 450)
+        self.setFixedSize(480, 520)
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
         
         layout = QVBoxLayout(self)
@@ -184,7 +192,7 @@ class SettingsDialog(QDialog):
         layout.addLayout(search_layout)
         
         layout.addSpacing(10)
-        layout.addWidget(QLabel("排除的应用（在此类窗口中选中文字时不触发）："))
+        layout.addWidget(QLabel("排除以下程序（在这些程序窗口中选中文字时不触发）："))
         
         self.list_excluded = QListWidget()
         self.list_excluded.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -194,16 +202,27 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.list_excluded)
         
         btn_layout = QHBoxLayout()
-        btn_add = QPushButton("+ 添加")
+        btn_add = QPushButton("+ 手动添加")
         btn_add.clicked.connect(self._add_excluded)
         btn_add.setStyleSheet("QPushButton { background-color: #30D158; color: white; border-radius: 6px; padding: 6px 16px; font-weight: bold; } QPushButton:hover { background-color: #28B84D; }")
-        btn_remove = QPushButton("× 删除")
+        btn_remove = QPushButton("× 移除选中")
         btn_remove.clicked.connect(self._remove_excluded)
         btn_remove.setStyleSheet("QPushButton { background-color: #FF453A; color: white; border-radius: 6px; padding: 6px 16px; font-weight: bold; } QPushButton:hover { background-color: #D6362D; }")
         btn_layout.addWidget(btn_add)
         btn_layout.addWidget(btn_remove)
-        btn_layout.addStretch()
         layout.addLayout(btn_layout)
+        
+        btn_layout2 = QHBoxLayout()
+        btn_from_processes = QPushButton("从运行程序选择...")
+        btn_from_processes.clicked.connect(self._select_from_processes)
+        btn_from_processes.setStyleSheet("QPushButton { background-color: #5E5CE6; color: white; border-radius: 6px; padding: 6px 16px; } QPushButton:hover { background-color: #4B49C4; }")
+        btn_browse = QPushButton("浏览...")
+        btn_browse.clicked.connect(self._browse_exe)
+        btn_browse.setStyleSheet("QPushButton { background-color: #5E5CE6; color: white; border-radius: 6px; padding: 6px 16px; } QPushButton:hover { background-color: #4B49C4; }")
+        btn_layout2.addWidget(btn_from_processes)
+        btn_layout2.addWidget(btn_browse)
+        btn_layout2.addStretch()
+        layout.addLayout(btn_layout2)
         
         layout.addSpacing(10)
         
@@ -224,9 +243,41 @@ class SettingsDialog(QDialog):
         layout.addWidget(save_btn)
 
     def _add_excluded(self):
-        text, ok = QInputDialog.getText(self, "添加排除窗口", "输入窗口类名（如 ConsoleWindowClass）：")
+        text, ok = QInputDialog.getText(self, "添加排除程序", "输入程序名（如 notepad.exe）：")
         if ok and text.strip():
-            self.list_excluded.addItem(text.strip())
+            if self.list_excluded.findItems(text.strip(), Qt.MatchFlag.MatchExactly):
+                return
+            self.list_excluded.addItem(text.strip().lower())
+
+    def _select_from_processes(self):
+        try:
+            result = subprocess.run(['tasklist', '/FO', 'CSV', '/NH'], capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                return
+            names = set()
+            for line in result.stdout.strip().split('\n'):
+                if ',' in line:
+                    name = line.split(',')[0].strip('"').lower()
+                    if name.endswith('.exe'):
+                        names.add(name)
+            names = sorted(names)
+            item, ok = QInputDialog.getItem(self, "选择程序", "从以下列表中选择要排除的程序（可输入筛选）：", names, 0, True)
+            if ok and item:
+                if self.list_excluded.findItems(item, Qt.MatchFlag.MatchExactly):
+                    return
+                self.list_excluded.addItem(item.lower())
+        except subprocess.TimeoutExpired:
+            log_msg("select_from_processes: tasklist timed out")
+        except Exception as e:
+            log_msg(f"select_from_processes error: {e}")
+
+    def _browse_exe(self):
+        path, _ = QFileDialog.getOpenFileName(self, "选择程序", "", "可执行文件 (*.exe)")
+        if path:
+            name = os.path.basename(path).lower()
+            if self.list_excluded.findItems(name, Qt.MatchFlag.MatchExactly):
+                return
+            self.list_excluded.addItem(name)
 
     def _remove_excluded(self):
         row = self.list_excluded.currentRow()
@@ -429,9 +480,6 @@ class PopClipTool(QApplication):
         self.show_bubble_signal.connect(self.show_bubble)
         self.hide_bubble_signal.connect(self.hide_bubble)
         
-        self.kb_controller = keyboard.Controller()
-        self._fallback_active = False
-        
         QTimer.singleShot(600, self.finish_startup)
 
     def finish_startup(self):
@@ -561,19 +609,29 @@ class PopClipTool(QApplication):
     def _is_excluded_app(self):
         try:
             user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            psapi = ctypes.windll.psapi
             hwnd = user32.GetForegroundWindow()
             if not hwnd:
                 return False
-            length = user32.GetClassNameW(hwnd, None, 0)
-            if length <= 0:
+            pid = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if not pid.value:
                 return False
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetClassNameW(hwnd, buf, length + 1)
-            class_name = buf.value
-            for entry in self.cm.config.get("excluded_apps", []):
-                if class_name == entry:
-                    return True
-            return False
+            h_process = kernel32.OpenProcess(0x0400 | 0x0010, False, pid.value)
+            if not h_process:
+                return False
+            try:
+                buf = ctypes.create_unicode_buffer(260)
+                size = ctypes.c_ulong(260)
+                if psapi.GetModuleBaseNameW(h_process, None, buf, size):
+                    exe_name = buf.value.lower()
+                    for entry in self.cm.config.get("excluded_apps", []):
+                        if exe_name == entry.lower().strip():
+                            return True
+                return False
+            finally:
+                kernel32.CloseHandle(h_process)
         except Exception as e:
             log_msg(f"_is_excluded_app error: {e}")
             return False
@@ -591,14 +649,14 @@ class PopClipTool(QApplication):
         if self._is_excluded_app():
             return
         self.is_copying = True
-        self._fallback_active = False
         
         try:
             self.old_content = self.safe_get_clipboard()
-            self.kb_controller.release(keyboard.Key.ctrl)
-            self.kb_controller.release(keyboard.Key.shift)
-            with self.kb_controller.pressed(keyboard.Key.ctrl):
-                self.kb_controller.tap(keyboard.Key.insert)
+            
+            user32 = ctypes.windll.user32
+            hwnd = user32.GetForegroundWindow()
+            WM_COPY = 0x0301
+            user32.SendMessageW(hwnd, WM_COPY, 0, 0)
             
             QTimer.singleShot(200, self.process_selection)
         except (KeyboardInterrupt, SystemExit):
@@ -612,13 +670,6 @@ class PopClipTool(QApplication):
         try:
             new_content = self.safe_get_clipboard()
             if not new_content or new_content == self.old_content:
-                if not self._fallback_active:
-                    self._fallback_active = True
-                    self.kb_controller.release(keyboard.Key.ctrl)
-                    with self.kb_controller.pressed(keyboard.Key.ctrl):
-                        self.kb_controller.tap('c')
-                    QTimer.singleShot(200, self.process_selection)
-                    return
                 self.is_copying = False
                 return
 
