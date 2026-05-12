@@ -480,6 +480,8 @@ class PopClipTool(QApplication):
         self.show_bubble_signal.connect(self.show_bubble)
         self.hide_bubble_signal.connect(self.hide_bubble)
         
+        self.kb_controller = keyboard.Controller()
+        
         QTimer.singleShot(600, self.finish_startup)
 
     def finish_startup(self):
@@ -653,10 +655,10 @@ class PopClipTool(QApplication):
         try:
             self.old_content = self.safe_get_clipboard()
             
-            user32 = ctypes.windll.user32
-            hwnd = user32.GetForegroundWindow()
-            WM_COPY = 0x0301
-            user32.SendMessageW(hwnd, WM_COPY, 0, 0)
+            self.kb_controller.release(keyboard.Key.ctrl)
+            self.kb_controller.release(keyboard.Key.shift)
+            with self.kb_controller.pressed(keyboard.Key.ctrl):
+                self.kb_controller.tap(keyboard.Key.insert)
             
             QTimer.singleShot(200, self.process_selection)
         except (KeyboardInterrupt, SystemExit):
